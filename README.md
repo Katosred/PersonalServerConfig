@@ -1,5 +1,7 @@
 # PersonalServerConfig
 
+> 个人配置备份，未经部署验证，不保证可用
+
 阿里云 ECS（Debian 12）动漫自动化全栈，Docker Compose 编排 9 容器：ani-rss（自动订阅下载）、qBittorrent（BT 下载）、v2rayA（代理）、File Browser（文件管理）、rclone-mount + rclone-webdav（OSS 媒体串流）、anime-migrate（本地→OSS 迁移）、bangumi-syncer（追番同步）、Glance（门户仪表盘）。
 
 ## 文件清单
