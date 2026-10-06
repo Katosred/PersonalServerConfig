@@ -39,3 +39,4 @@ secret_access_key = <AccessKey_Secret>
 endpoint = oss-<你的地域ID>-internal.aliyuncs.com
 # 读写权限：私有
 acl = private
+```
