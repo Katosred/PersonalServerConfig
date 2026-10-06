@@ -1,0 +1,179 @@
+name: anime-server
+
+services:
+
+  # ================= v2rayA(代理) =================
+  v2raya:
+    image: mzz2017/v2raya:latest
+    container_name: v2raya
+    restart: always
+    privileged: true
+    network_mode: host
+    environment:
+      - V2RAYA_LOG_FILE=/tmp/v2raya.log
+      - V2RAYA_V2RAY_BIN=/usr/bin/v2raya_core
+      - V2RAYA_NFTABLES_SUPPORT=off
+      - IPTABLES_MODE=legacy
+    volumes:
+      - /opt/anime-server/v2raya:/etc/v2raya
+      - /lib/modules:/lib/modules:ro
+      - /etc/resolv.conf:/etc/resolv.conf
+
+  # ================= qBittorrent(下载器) =================
+  qbittorrent:
+    image: qbittorrentofficial/qbittorrent-nox:latest
+    container_name: qbittorrent
+    restart: always
+    network_mode: host
+    environment:
+      - QBT_LEGAL_NOTICE=confirm
+      - QBT_WEBUI_PORT=8080
+      - QBT_TORRENTING_PORT=6881
+      - PUID=0
+      - PGID=0
+      - UMASK=022
+      - TZ=Asia/Shanghai
+    stop_grace_period: 30m
+    volumes:
+      - /opt/anime-server/qbittorrent/config:/config
+      - /opt/anime-server/media:/Media
+
+  # ================= ani-rss(拉取番剧更新种子) =================
+  ani-rss:
+    image: wushuo894/ani-rss:latest
+    container_name: ani-rss
+    restart: always
+    network_mode: host
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=022
+      - SERVER_PORT=7789
+      - CONFIG=/config
+      - TZ=Asia/Shanghai
+      - SWAGGER_ENABLED=false
+      - MCP_ENABLED=false
+      - JAVA_OPTS=-Xms64m -Xmx384m -Xss256k -XX:+UseG1GC
+    volumes:
+      - /opt/anime-server/ani-rss/config:/config
+      - /opt/anime-server/media:/Media
+    depends_on:
+      - qbittorrent
+
+  # ================= Bangumi-syncer(bgm同步观看进度) =================
+  bangumi-syncer:
+    image: sanaemio/bangumi-syncer:latest
+    container_name: bangumi-syncer
+    restart: always
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+    volumes:
+      - /opt/anime-server/bangumi-syncer/config:/app/config
+      - /opt/anime-server/bangumi-syncer/logs:/app/logs
+      - /opt/anime-server/bangumi-syncer/data:/app/data
+
+  # ================= File Browser(文件管理) =================
+  filebrowser:
+    image: filebrowser/filebrowser:v2.63.23
+    container_name: filebrowser
+    restart: always
+    network_mode: host
+    user: "0:0"
+    environment:
+      - FB_PORT=8081
+    volumes:
+      - /opt/anime-server/filebrowser:/database
+      - /opt/anime-server/media:/srv/local-media
+      - /opt/anime-server/oss-mnt:/srv/oss-media:rslave
+      - /opt/anime-server/glance/assets/icons:/srv/glance-icons
+    command: >-
+      --address 0.0.0.0
+      --port 8081
+      --database /database/filebrowser.db
+      --root /srv
+    depends_on:
+      - rclone-mount
+
+  # ================= rclone(OSS挂载) =================
+  rclone-mount:
+    image: rclone/rclone:latest
+    container_name: rclone-mount
+    restart: always
+    network_mode: host
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - RCLONE_CONFIG=/config/rclone/rclone.conf
+    volumes:
+      - /opt/anime-server/rclone:/config/rclone
+      - /opt/anime-server/oss-mnt:/data:shared
+    command: >-
+      mount ${OSS_REMOTE} /data/oss
+      --allow-other
+      --dir-cache-time 5m
+      --attr-timeout 5m
+      --vfs-cache-mode minimal
+      --uid 0 --gid 0 --umask 022
+      --log-level INFO
+
+  # ================= WebDAV(提供远程播放服务) =================
+  webdav:
+    image: rclone/rclone:latest
+    container_name: rclone-webdav
+    restart: always
+    network_mode: host
+    environment:
+      - RCLONE_CONFIG=/config/rclone/rclone.conf
+    volumes:
+      - /opt/anime-server/rclone:/config/rclone
+    command: >-
+      serve webdav ${OSS_REMOTE}
+      --addr 0.0.0.0:8082
+      --user ${WEBDAV_USER}
+      --pass ${WEBDAV_PASS}
+      --read-only
+      --dir-cache-time 1m
+      --buffer-size 16M
+      --vfs-read-chunk-size 8M
+
+  # ================= migrate(迁移脚本) =================
+  migrate:
+    build: ./migrate
+    container_name: anime-migrate
+    restart: always
+    network_mode: host
+    environment:
+      - RCLONE_CONFIG=/config/rclone/rclone.conf
+      - QB_URL=http://127.0.0.1:8080
+      - QBT_API_KEY=${QBT_API_KEY}
+      - REMOTE=${OSS_REMOTE}
+      - LOCAL_ROOT=/Media
+      - MIN_AGE_MIN=15
+      - INTERVAL=600
+    volumes:
+      - /opt/anime-server/rclone:/config/rclone
+      - /opt/anime-server/media:/Media
+    depends_on:
+      - qbittorrent
+
+  # ===============glance(主页门户)===================
+  glance:
+    image: glanceapp/glance:v0.8.6
+    container_name: glance
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+      - PUBLIC_IP=${PUBLIC_IP}
+      - ANIRSS_API_KEY=${ANIRSS_API_KEY}
+      - BANGUMI_USER=${BANGUMI_USER}
+    volumes:
+      - ./glance:/app/config
+      - ./glance/assets:/app/assets
+    restart: unless-stopped

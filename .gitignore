@@ -1,0 +1,9 @@
+# 白名单模式：根目录默认全部忽略，逐项放行——防止数据目录与密钥误提交
+/*
+!/.gitignore
+!/README.md
+!/docker-compose.yml
+!/glance
+/glance/assets/oss-usage.json
+!/migrate
+!/oss-mnt-share.service

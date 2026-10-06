@@ -1,0 +1,209 @@
+server:
+  port: 3000
+  assets-path: /app/assets
+
+theme:
+  light: false
+  background-color: 240 8 9
+  primary-color: 45 90 60
+  positive-color: 120 60 50
+  negative-color: 0 75 60
+  disable-picker: true
+  custom-css-file: /assets/user.css
+
+pages:
+  - name: Server
+    columns:
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: 24h
+
+          - type: custom-api
+            title: weather
+            cache: 30m
+            url: https://api.open-meteo.com/v1/forecast?latitude=28.37&longitude=121.37&current=temperature_2m,apparent_temperature,weather_code&timezone=Asia%2FShanghai
+            template: |
+              {{ $c := .JSON.Int "current.weather_code" }}
+              {{ $emoji := "☁️" }}
+              {{ if eq $c 0 }}{{ $emoji = "☀️" }}
+              {{ else if or (eq $c 1) (eq $c 2) }}{{ $emoji = "🌤️" }}
+              {{ else if eq $c 3 }}{{ $emoji = "☁️" }}
+              {{ else if or (eq $c 45) (eq $c 48) }}{{ $emoji = "🌫️" }}
+              {{ else if and (ge $c 51) (le $c 67) }}{{ $emoji = "🌧️" }}
+              {{ else if and (ge $c 71) (le $c 77) }}{{ $emoji = "🌨️" }}
+              {{ else if and (ge $c 80) (le $c 82) }}{{ $emoji = "🌦️" }}
+              {{ else if or (eq $c 85) (eq $c 86) }}{{ $emoji = "🌨️" }}
+              {{ else if ge $c 95 }}{{ $emoji = "⛈️" }}
+              {{ end }}
+              <div style="text-align: center; font-size: 1.6rem;">{{ $emoji }} <b>{{ printf "%.0f" (.JSON.Float "current.temperature_2m") }}°C</b>（体感 {{ printf "%.0f" (.JSON.Float "current.apparent_temperature") }}°C）</div>
+
+          - type: server-stats
+            servers:
+              - type: local
+                name: AliServer
+                mountpoints:
+                  /:
+                    name: Local
+
+          - type: custom-api
+            css-class: oss-usage
+            title: OSS 用量
+            cache: 5m
+            url: http://127.0.0.1:3000/assets/oss-usage.json
+            template: |
+              {{ $bytes := .JSON.Int "bytes" }}
+              {{ $gib := div $bytes 1073741824 }}
+              {{ $dec := div (mod $bytes 1073741824) 10737418 }}
+              {{ $cents := div (mul $bytes 12) 1073741824 }}
+              <div><b>{{ printf "%d.%02d" $gib $dec }}</b> GiB · {{ .JSON.Int "count" }} 个文件</div>
+              <div>预计费用 <b>{{ printf "%d.%02d" (div $cents 100) (mod $cents 100) }}</b> 元/月</div>
+              <div style="font-size: 1.15rem; opacity: 0.65;">updated {{ .JSON.String "updated" }}</div>
+
+      - size: full
+        widgets:
+          - type: monitor
+            title: 服务状态
+            cache: 1m
+            sites:
+              - title: ani-rss
+                url: http://${PUBLIC_IP}:7789
+                check-url: http://127.0.0.1:7789
+                icon: /assets/icons/ani-rss.png
+              - title: qBittorrent
+                url: http://${PUBLIC_IP}:8080
+                check-url: http://127.0.0.1:8080
+                icon: /assets/icons/qbittorrent.png
+              - title: Bangumi-syncer
+                url: http://${PUBLIC_IP}:8000
+                check-url: http://127.0.0.1:8000
+                icon: /assets/icons/bangumi-syncer.png
+              - title: File Browser
+                url: http://${PUBLIC_IP}:8081
+                check-url: http://127.0.0.1:8081
+                icon: /assets/icons/filebrowser.png
+              - title: WebDAV
+                url: http://${PUBLIC_IP}:8082
+                check-url: http://127.0.0.1:8082
+                icon: /assets/icons/webdav.png
+                alt-status-codes: [401, 404, 405]
+              - title: v2rayA
+                url: http://${PUBLIC_IP}:2017
+                check-url: http://127.0.0.1:2017
+                icon: /assets/icons/v2raya.png
+
+          - type: split-column
+            widgets:
+              - type: custom-api
+                title: 周放送表
+                css-class: fixed-scroll
+                cache: 5m
+                method: POST
+                headers:
+                  api-key: ${ANIRSS_API_KEY}
+                url: http://127.0.0.1:7789/api/listAni
+                template: |
+                  {{ $days := .JSON.Array "data.weekList" }}
+                  {{ range $k := 7 }}
+                    {{ $idx := mod (sub 7 $k) 7 }}
+                    {{ $g := index $days $idx }}
+                    {{ $n := 0 }}
+                    {{ range $g.Array "items" }}{{ if .Bool "enable" }}{{ $n = add $n 1 }}{{ end }}{{ end }}
+                    <p><b>周{{ slice ($g.String "weekLabel") 6 }}{{ if eq $idx 0 }}（今天）{{ end }}</b></p>
+                    {{ if gt $n 0 }}
+                      {{ range $g.Array "items" }}
+                        {{ if .Bool "enable" }}
+                          {{ $img := .String "image" }}
+                          <div style="display: flex; align-items: center; gap: 0.7rem;">
+                            {{ if $img }}<img src="https://images.weserv.nl/?url={{ $img }}&w=100" loading="lazy" alt="" style="width: 36px; height: 50px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">{{ end }}
+                            <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ .String "title" }}</span>
+                            <span style="flex-shrink: 0;">EP.{{ add (.Int "currentEpisodeNumber") 1 }}</span>
+                          </div>
+                        {{ end }}
+                      {{ end }}
+                    {{ else }}
+                      <div style="opacity: 0.55;">无更新番剧</div>
+                    {{ end }}
+                  {{ end }}
+
+              - type: split-column
+                widgets:
+                  - type: custom-api
+                    title: 观看进度
+                    css-class: fixed-scroll
+                    cache: 2h
+                    url: https://bgmapi.anibt.net/v0/users/${BANGUMI_USER}/collections?type=3&subject_type=2&limit=50
+                    headers:
+                      User-Agent: anime-server-dashboard/1.0
+                    template: |
+                      {{ range .JSON.Array "data" }}
+                        {{ $cn := .String "subject.name_cn" }}
+                        {{ if eq $cn "" }}{{ $cn = .String "subject.name" }}{{ end }}
+                        {{ $eps := .Int "subject.eps" }}
+                        {{ $img := .String "subject.images.common" }}
+                        <div style="display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.5rem;">
+                          {{ if $img }}<img src="https://images.weserv.nl/?url={{ $img }}&w=100" loading="lazy" alt="" style="width: 36px; height: 50px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">{{ end }}
+                          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ $cn }}</span>
+                          <span style="flex-shrink: 0;">{{ if gt $eps 0 }}{{ .Int "ep_status" }} / {{ $eps }}{{ else }}第 {{ .Int "ep_status" }} 集{{ end }}</span>
+                        </div>
+                      {{ end }}
+
+      # 右列（small）：日历 + 订阅速览
+      - size: small
+        widgets:
+          - type: calendar
+            first-day-of-week: monday
+
+          - type: custom-api
+            title: 订阅速览
+            cache: 5m
+            method: POST
+            headers:
+              api-key: ${ANIRSS_API_KEY}
+            url: http://127.0.0.1:7789/api/listAni
+            template: |
+              {{ $days := .JSON.Array "data.weekList" }}
+              {{ $subs := 0 }}{{ $today := 0 }}{{ $eps := 0 }}
+              {{ range $days }}
+                {{ range .Array "items" }}
+                  {{ if .Bool "enable" }}
+                    {{ $subs = add $subs 1 }}
+                    {{ $eps = add $eps (.Int "currentEpisodeNumber") }}
+                  {{ end }}
+                {{ end }}
+              {{ end }}
+              {{ if gt (len $days) 0 }}
+                {{ range (index $days 0).Array "items" }}{{ if .Bool "enable" }}{{ $today = add $today 1 }}{{ end }}{{ end }}
+              {{ end }}
+              <div>今日更新 <b>{{ $today }}</b> 集 · 本周共 <b>{{ $eps }}</b> 集</div>
+              <div>本季订阅 <b>{{ $subs }}</b> 部</div>
+
+          - type: bookmarks
+            groups:
+              - links:
+                  - title: 阿里云控制台
+                    url: https://home.console.aliyun.com/home/dashboard/ProductAndService
+                    icon: di:aliyun
+                  - title: Bangumi
+                    url: https://bgm.tv
+                    icon: /assets/icons/bgm.png
+
+  - name: Article
+    columns:
+      - size: full
+        widgets:
+          - type: rss
+            title: 微笑动漫
+            style: horizontal-cards
+            cache: 1h
+            feeds:
+              - url: https://weixiaoacg.com/feed
+
+          - type: rss
+            title: 長門番堂
+            css-class: noimg-rss
+            style: horizontal-cards
+            cache: 1d
+            feeds:
+              - url: https://yuc.wiki/atom.xml
+                limit: 15
