@@ -17,7 +17,7 @@
 
 ## 从零重建
 
-1. Debian 12 安装 Docker Compose 与 git
+1. 安装 Docker Compose 与 git
 2. `git clone https://github.com/Katosred/PersonalServerConfig.git /opt/anime-server && cd /opt/anime-server`
 3. `nano .env`，粘贴下方模板并填写真实值，然后 `chmod 600 .env`
 4. `mkdir -p rclone && nano rclone/rclone.conf`，粘贴下方模板并填写 AccessKey，然后 `chmod 600 rclone/rclone.conf`
