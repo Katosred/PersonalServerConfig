@@ -202,6 +202,7 @@ pages:
           - type: rss
             title: 長門番堂
             css-class: noimg-rss
+            preserve-order: true
             style: horizontal-cards
             cache: 1d
             feeds:
